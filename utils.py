@@ -70,10 +70,10 @@ def dag_orient_edges(adjacency_matrix,pseudotime):
 
 def construct_S0_S1(D):
 
-	D_0 = D.copy()
-	D_1 = D.copy() + np.eye(D.shape[0])
-	S_0 = D_0.copy()
-	S_1 = D_1.copy()
+	D_0 = D.clone()
+	D_1 = D.clone() + torch.eye(D.shape[0])
+	S_0 = D_0.clone()
+	S_1 = D_1.clone()
 
 	D_0_sum = D_0.sum(1)
 	D_0_sum[D_0_sum == 0] = 1

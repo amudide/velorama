@@ -31,7 +31,9 @@ class LagNet(nn.Module):
 			setattr(self,'ax{}'.format(i),cur)
 
 		for i in range(1, self.L + 1):
-			setattr(self,'fc1_{}'.format(i),nn.Linear(self.g, self.d))
+			setattr(self,'fc1_{}'.format(i),nn.Linear(self.g, self.d, bias=False))
+
+		self.b1 = nn.Parameter(torch.zeros((1, self.d)),requires_grad=True) # initialization?
 		
 		for i in range(2, self.K):
 			setattr(self,'fc{}'.format(i),nn.Linear(self.d, self.d))
@@ -44,6 +46,7 @@ class LagNet(nn.Module):
 
 		for i in range(1, self.L + 1):
 			ret = ret + getattr(self,'fc1_{}'.format(i))(getattr(self,'ax{}'.format(i)))
+		ret = ret + self.b1
 		ret = F.relu(ret)
 
 		for i in range(2, self.K):

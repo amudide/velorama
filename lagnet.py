@@ -18,6 +18,7 @@ import pandas as pd
 import os
 
 from models import LagNet
+from utils import construct_S0_S1
 
 def run(A,X,L,K,d,target,final_activation=None,lam=794e-6,alpha=0.5,seed=1,optim='adam',
 		initial_learning_rate=0.001,beta_1=0.9,beta_2=0.999,epochs=200,
@@ -34,6 +35,9 @@ def run(A,X,L,K,d,target,final_activation=None,lam=794e-6,alpha=0.5,seed=1,optim
 	A = A.float()
 	X = X.float()
 
+	#S_0, _ = construct_S0_S1(A)
+
+	#S_0 = S_0.to(device)
 	A = A.to(device)
 	X = X.to(device)
 
@@ -60,8 +64,8 @@ def run(A,X,L,K,d,target,final_activation=None,lam=794e-6,alpha=0.5,seed=1,optim
 
 		params = list(model.parameters())
 		weights = []
-		for i in range(L):
-			weights.append(params[2 * i])
+		for i in range(1, L + 1):
+			weights.append(params[i])
 
 		weights = torch.stack(weights, dim=0)
 		weights = [weights[:,:,i] for i in range(g)]
@@ -96,8 +100,8 @@ def run(A,X,L,K,d,target,final_activation=None,lam=794e-6,alpha=0.5,seed=1,optim
 	with torch.no_grad():
 		params = list(model.parameters())
 		weights = []
-		for i in range(L):
-			weights.append(params[2 * i])
+		for i in range(1, L + 1):
+			weights.append(params[i])
 
 		weights = torch.stack(weights, dim=0)
 		weights = [weights[:,:,i] for i in range(g)]
