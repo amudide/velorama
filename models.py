@@ -40,48 +40,19 @@ class LagNet(nn.Module):
 
 
 	def forward(self):
-
-		ret = 0
-
-		#print(f'The size of A*X should be {self.N}x{self.g} and it is: {self.ax1.size()}')
+		ret = torch.zeros(self.N, self.d)  # set requires_grad to True?
 
 		for i in range(1, self.L + 1):
 			ret = ret + getattr(self,'fc1_{}'.format(i))(getattr(self,'ax{}'.format(i)))
 		ret = F.relu(ret)
 
-		#print(f'The size of h(1) should be {self.N}x{self.d} and it is: {ret.size()}')
-
 		for i in range(2, self.K):
 			ret = getattr(self,'fc{}'.format(i))(ret)
 			ret = F.relu(ret)
 
-		#print(f'The size of h(K-1) should be {self.N}x{self.d} and it is: {ret.size()}')
-
 		ret = getattr(self,'fc{}'.format(self.K))(ret)
-
-		#print(f'The size of h(K) should be {self.N}x{1} and it is: {ret.size()}')
 
 		if self.final_activation == 'exp':
 			ret = torch.exp(ret)
 
-		#print(f'The size of h(K) should be {self.N}x{1} and it is: {ret.size()}')
-
 		return ret
-
-'''
-A = torch.tensor([[0, 1, 0, 0],
-				  [0, 0, 1, 0],
-				  [0, 0, 0, 1],
-				  [0, 0, 0, 0]])
-
-X = torch.tensor([[4, 5],
-				  [1, 2],
-				  [0, 3],
-				  [7, 10]])
-
-model = LagNet(A, X, L=6, K=4, d=10, final_activation='exp')
-
-print(model)
-
-print(model())
-'''
