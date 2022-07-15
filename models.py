@@ -27,7 +27,7 @@ class LagNet(nn.Module):
 
 		cur = torch.clone(self.X)
 		for i in range(1, self.L + 1):
-			cur = torch.matmul(self.A.t(), cur)
+			cur = torch.matmul(self.A, cur)
 			setattr(self,'ax{}'.format(i),cur)
 
 		for i in range(1, self.L + 1):

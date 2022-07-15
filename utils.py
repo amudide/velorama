@@ -113,3 +113,9 @@ def load_multiome_data(data_dir,dataset,sampling=None,preprocess=True):
 		sc.pp.log1p(atac_adata)
 
 	return rna_adata,atac_adata
+
+def seq2dag(N):
+    A = torch.zeros(N, N)
+    for i in range(N - 1):
+        A[i][i + 1] = 1
+    return A
