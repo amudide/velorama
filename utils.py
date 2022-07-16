@@ -68,19 +68,15 @@ def dag_orient_edges(adjacency_matrix,pseudotime):
 
 	return D
 
-def construct_S0_S1(D):
-
-	D_0 = D.clone()
-	D_1 = D.clone() + torch.eye(D.shape[0])
-	S_0 = D_0.clone()
-	S_1 = D_1.clone()
-
-	D_0_sum = D_0.sum(1)
-	D_0_sum[D_0_sum == 0] = 1
-	S_0 = (S_0.T/D_0_sum)
-	S_1 = (S_1.T/D_1.sum(1))
-
-	return S_0,S_1
+def construct_S(D):
+    S = D.clone()
+    D_sum = D.sum(0)
+    D_sum[D_sum == 0] = 1
+    
+    S = (S/D_sum)
+    S = S.T
+    
+    return S
 
 def load_multiome_data(data_dir,dataset,sampling=None,preprocess=True):
 

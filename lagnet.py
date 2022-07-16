@@ -18,10 +18,10 @@ import pandas as pd
 import os
 
 from models import LagNet
-from utils import construct_S0_S1
+from utils import construct_S
 
 def run(A,X,L,K,d,target,final_activation=None,lam=794e-6,alpha=0.5,seed=1,optim='adam',
-		initial_learning_rate=0.001,beta_1=0.9,beta_2=0.999,epochs=200,
+		initial_learning_rate=0.001,beta_1=0.9,beta_2=0.999,epochs=300,linear=False,
 		save_dir='./results',save_name='lagnet'):
 
 	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -35,13 +35,12 @@ def run(A,X,L,K,d,target,final_activation=None,lam=794e-6,alpha=0.5,seed=1,optim
 	A = A.float()
 	X = X.float()
 
-	S_0, _ = construct_S0_S1(A)
+	S = construct_S(A)
 	
-	S_0 = S_0.to(device)
-	#A = A.to(device)
+	S = S.to(device)
 	X = X.to(device)
 
-	model = LagNet(S_0,X,L,K,d,final_activation)
+	model = LagNet(S,X,L,K,d,final_activation)
 	model.to(device)
 
 	criterion = nn.MSELoss()  # reduction = sum?
