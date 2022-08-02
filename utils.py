@@ -3,7 +3,6 @@ import os
 import torch
 from scipy.stats import f
 from scipy.sparse import csr_matrix
-from statsmodels.stats.multitest import fdrcorrection
 import scanpy as sc
 import scanpy.external as sce
 from anndata import AnnData

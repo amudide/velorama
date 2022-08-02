@@ -1,108 +1,275 @@
-'''
-Training LagNet:
-	A: adjacency matrix (N x N)
-	X: expression matrix (N x g)
-	L: number of lags to look back
-	K: number of layers in the model
-	d: number of nodes in hidden layers
-	target: the gene id that the model predicts.
-	lam: lamda value, the coefficient for regularization
-	alpha: coefficient in mixed regularization
-'''
-
 import torch
 import torch.nn as nn
 import numpy as np
-import time
-import pandas as pd
-import os
+from copy import deepcopy
+from models.utils import construct_S, seq2dag
 
-from models import LagNet
-from utils import construct_S
+def activation_helper(activation, dim=None):
+    if activation == 'sigmoid':
+        act = nn.Sigmoid()
+    elif activation == 'tanh':
+        act = nn.Tanh()
+    elif activation == 'relu':
+        act = nn.ReLU()
+    elif activation == 'leakyrelu':
+        act = nn.LeakyReLU()
+    elif activation is None:
+        def act(x):
+            return x
+    else:
+        raise ValueError('unsupported activation: %s' % activation)
+    return act
 
-def run(A,X,L,K,d,target,final_activation=None,lam=794e-6,alpha=0.5,seed=1,optim='adam',
-		initial_learning_rate=0.001,beta_1=0.9,beta_2=0.999,epochs=300,linear=False,
-		save_dir='./results',save_name='lagnet'):
+class lagnet(nn.Module):
+    ax = []
 
-	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-	torch.manual_seed(seed)
-	np.random.seed(seed)
+    def __init__(self, T, num_series, lag, hidden, device, activation):
+        super(lagnet, self).__init__()
+        self.activation = activation_helper(activation)
+        self.hidden = hidden
+        self.lag = lag
+        self.T = T
+        self.device = device
+        self.dropout = nn.Dropout(0.25)
 
-	start = time.time()
-	
-	g = X.size(dim=1)
+        # Set up network.
+        layer = nn.Conv1d(num_series, hidden[0], lag)
+        modules = [layer]
 
-	A = A.float()
-	X = X.float()
+        for d_in, d_out in zip(hidden, hidden[1:] + [1]):
+            layer = nn.Conv1d(d_in, d_out, 1)
+            modules.append(layer)
 
-	S = construct_S(A)
-	
-	S = S.to(device)
-	X = X.to(device)
+        # Register parameters.
+        self.layers = nn.ModuleList(modules)
 
-	model = LagNet(S,X,L,K,d,final_activation)
-	model.to(device)
+    def forward(self):
+        ret = torch.zeros(self.T, self.hidden[0], device=self.device)
+        for i in range(self.lag):
+            ret = ret + torch.matmul(lagnet.ax[i], self.layers[0].weight[:, :, self.lag - 1 - i].T)
+        ret = ret + self.layers[0].bias
 
-	criterion = nn.MSELoss()  # reduction = sum?
+        ret = ret.T
+        for i, fc in enumerate(self.layers):
+            if i == 0:
+                continue
+            ret = self.activation(ret)
+            ret = fc(ret)
 
-	if optim == 'sgd':
-		optimizer = torch.optim.SGD(params=model.parameters(), 
-			lr=initial_learning_rate)
-	elif optim == 'adam':
-		optimizer = torch.optim.Adam(params=model.parameters(), 
-			lr=initial_learning_rate, betas=(beta_1, beta_2))
+        ret = ret.T
+        # exponential function?
 
-	for epoch in range(epochs):
-		ep_start = time.time()
-			
-		preds = model()
-		targets = X[:, target]
-		targets = torch.unsqueeze(targets, 1)
+        ret = torch.unsqueeze(ret, 0)
+        return ret
 
-		reg = 0
+class clagnet(nn.Module):
+    def __init__(self, A, X, num_series, lag, hidden, device, activation='relu'):
+        '''
+        clagnet model with one lagnet per time series.
 
-		params = list(model.parameters())
-		weights = []
-		for i in range(1, L + 1):
-			weights.append(params[i])
+        Args:
+          num_series: dimensionality of multivariate time series.
+          lag: number of previous time points to use in prediction.
+          hidden: list of number of hidden units per layer.
+          activation: nonlinearity at each layer.
+        '''
+        super(clagnet, self).__init__()
+        self.p = num_series
+        self.lag = lag
+        self.activation = activation_helper(activation)
 
-		weights = torch.stack(weights, dim=0)
-		weights = [weights[:,:,i] for i in range(g)]
+        if A == "linear":
+            A = seq2dag(X.shape[1])
+        S = construct_S(A)
+        S = S.to(device)
 
-		for i in range(g):
-			reg = reg + alpha * torch.linalg.matrix_norm(weights[i])
-			for j in range(L):
-				reg = reg + (1 - alpha) * torch.linalg.norm(weights[i][j])
-		reg = reg * lam
+        ax = []
+        cur = torch.clone(X[0])
+        for _ in range(lag):
+            cur = torch.matmul(S, cur)
+            ax.append(cur)
+        
+        #print("AX matrices:")
+        #print(torch.stack(ax))
 
-		loss = criterion(preds, targets) + reg
+        lagnet.ax = torch.stack(ax)
+        lagnet.ax = lagnet.ax.to(device)
 
-		optimizer.zero_grad()
-		loss.backward()
-		optimizer.step()
+        # Set up networks.
+        self.networks = nn.ModuleList([
+            lagnet(X.shape[1], num_series, lag, hidden, device, activation)
+            for _ in range(num_series)])
 
-		ep_end = time.time()
+    def forward(self):
+        '''
+        Perform forward pass.
 
-		mode = 'train'
-		print('Epoch {} ({:.2f} seconds): {} loss {:.2f}'.format(epoch,ep_end-ep_start,mode,loss))
+        Args:
+          X: torch tensor of shape (batch, T, p).
+        '''
+        return torch.cat([network() for network in self.networks], dim=2)
+
+    def GC(self, threshold=True, ignore_lag=True):
+        '''
+        Extract learned Granger causality.
+
+        Args:
+          threshold: return norm of weights, or whether norm is nonzero.
+          ignore_lag: if true, calculate norm of weights jointly for all lags.
+
+        Returns:
+          GC: (p x p) or (p x p x lag) matrix. In first case, entry (i, j)
+            indicates whether variable j is Granger causal of variable i. In
+            second case, entry (i, j, k) indicates whether it's Granger causal
+            at lag k.
+        '''
+        if ignore_lag:
+            GC = [torch.norm(net.layers[0].weight, dim=(0, 2))
+                  for net in self.networks]
+        else:
+            GC = [torch.norm(net.layers[0].weight, dim=0)
+                  for net in self.networks]
+        GC = torch.stack(GC)
+        if threshold:
+            return (GC > 0).int()
+        else:
+            return GC
 
 
-	if not os.path.exists(save_dir):
-		os.mkdir(save_dir)
+def prox_update(network, lam, lr, penalty):
+    '''
+    Perform in place proximal update on first layer weight matrix.
 
-	model.to('cpu')
-	torch.save(model.state_dict(),os.path.join(save_dir,'{}.model_weights.pth'.format(
-		save_name)))
+    Args:
+      network: lagnet network.
+      lam: regularization parameter.
+      lr: learning rate.
+      penalty: one of GL (group lasso), GSGL (group sparse group lasso),
+        H (hierarchical).
+    '''
+    W = network.layers[0].weight
+    hidden, p, lag = W.shape
+    if penalty == 'GL':
+        norm = torch.norm(W, dim=(0, 2), keepdim=True)
+        W.data = ((W / torch.clamp(norm, min=(lr * lam)))
+                  * torch.clamp(norm - (lr * lam), min=0.0))
+    elif penalty == 'GSGL':
+        norm = torch.norm(W, dim=0, keepdim=True)
+        W.data = ((W / torch.clamp(norm, min=(lr * lam)))
+                  * torch.clamp(norm - (lr * lam), min=0.0))
+        norm = torch.norm(W, dim=(0, 2), keepdim=True)
+        W.data = ((W / torch.clamp(norm, min=(lr * lam)))
+                  * torch.clamp(norm - (lr * lam), min=0.0))
+    elif penalty == 'H':
+        # Lowest indices along third axis touch most lagged values.
+        for i in range(lag):
+            norm = torch.norm(W[:, :, :(i + 1)], dim=(0, 2), keepdim=True)
+            W.data[:, :, :(i+1)] = (
+                (W.data[:, :, :(i+1)] / torch.clamp(norm, min=(lr * lam)))
+                * torch.clamp(norm - (lr * lam), min=0.0))
+    else:
+        raise ValueError('unsupported penalty: %s' % penalty)
 
-	print('Total Time: {} seconds'.format(time.time()-start))
 
-	with torch.no_grad():
-		params = list(model.parameters())
-		weights = []
-		for i in range(1, L + 1):
-			weights.append(params[i])
+def regularize(network, lam, penalty):
+    '''
+    Calculate regularization term for first layer weight matrix.
 
-		weights = torch.stack(weights, dim=0)
-		weights = [weights[:,:,i] for i in range(g)]
+    Args:
+      network: lagnet network.
+      penalty: one of GL (group lasso), GSGL (group sparse group lasso),
+        H (hierarchical).
+    '''
+    W = network.layers[0].weight
+    hidden, p, lag = W.shape
+    if penalty == 'GL':
+        return lam * torch.sum(torch.norm(W, dim=(0, 2)))
+    elif penalty == 'GSGL':
+        return lam * (torch.sum(torch.norm(W, dim=(0, 2)))
+                      + torch.sum(torch.norm(W, dim=0)))
+    elif penalty == 'H':
+        # Lowest indices along third axis touch most lagged values.
+        return lam * sum([torch.sum(torch.norm(W[:, :, :(i+1)], dim=(0, 2)))
+                          for i in range(lag)])
+    else:
+        raise ValueError('unsupported penalty: %s' % penalty)
 
-		return weights
+
+def ridge_regularize(network, lam):
+    '''Apply ridge penalty at all subsequent layers.'''
+    return lam * sum([torch.sum(fc.weight ** 2) for fc in network.layers[1:]])
+
+
+def restore_parameters(model, best_model):
+    '''Move parameter values from best_model to model.'''
+    for params, best_params in zip(model.parameters(), best_model.parameters()):
+        params.data = best_params
+
+def train_model_ista(clagnet, X, lam, lam_ridge, lr, penalty = "H", max_iter=50000, 
+                    check_every=100, lookback=5, verbose = 1):
+
+    '''Train model with ISTA.'''
+    lag = clagnet.lag
+    p = X.shape[-1]
+    loss_fn = nn.MSELoss(reduction='mean')
+    train_loss_list = []
+
+    # For early stopping.
+    best_it = None
+    best_loss = np.inf
+    best_model = None
+
+    # Calculate smooth error.
+    loss = sum([loss_fn(clagnet.networks[i](), X[:, :, i:i+1])
+                for i in range(p)])
+    ridge = sum([ridge_regularize(net, lam_ridge) for net in clagnet.networks])
+    smooth = loss + ridge
+
+    for it in range(max_iter):
+        # Take gradient step.
+        smooth.backward()
+        for param in clagnet.parameters():
+            param.data = param - lr * param.grad
+
+        # Take prox step.
+        if lam > 0:
+            for net in clagnet.networks:
+                prox_update(net, lam, lr, penalty)
+
+        clagnet.zero_grad()
+
+        # Calculate loss for next iteration.
+        loss = sum([loss_fn(clagnet.networks[i](), X[:, :, i:i+1])
+                    for i in range(p)])
+        ridge = sum([ridge_regularize(net, lam_ridge) for net in clagnet.networks])
+        smooth = loss + ridge
+
+        # Check progress.
+        if (it + 1) % check_every == 0:
+            # Add nonsmooth penalty.
+            nonsmooth = sum([regularize(net, lam, penalty)
+                             for net in clagnet.networks])
+            mean_loss = (smooth + nonsmooth) / p
+            train_loss_list.append(mean_loss.detach())
+
+            if verbose > 0:
+                print(('-' * 10 + 'Iter = %d' + '-' * 10) % (it + 1))
+                print('Loss = %f' % mean_loss)
+                print('Variable usage = %.2f%%'
+                      % (100 * torch.mean(clagnet.GC().float())))
+
+            # Check for early stopping.
+            if mean_loss < best_loss:
+                best_loss = mean_loss
+                best_it = it
+                best_model = deepcopy(clagnet)
+            elif (it - best_it) == lookback * check_every:
+                if verbose:
+                    print('Stopping early')
+                break
+
+    # Restore best model.
+    restore_parameters(clagnet, best_model)
+
+    return train_loss_list
+
