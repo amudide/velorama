@@ -1,3 +1,3 @@
 # LagNet
 
-![Alt text](figs/FIGURE-LAGNET.png?raw=true "Title")
+![Alt text](fig/FIGURE-LAGNET.png?raw=true "Title")
