@@ -6,6 +6,9 @@ from scipy.sparse import csr_matrix
 import scanpy as sc
 import scanpy.external as sce
 from anndata import AnnData
+import cellrank as cr
+from cellrank.tl.kernels import VelocityKernel
+
 
 def construct_dag(joint_feature_embeddings,iroot,n_neighbors=15,pseudotime_algo='dpt'):
 	
@@ -61,6 +64,8 @@ def infer_knngraph_pseudotime(joint_feature_embeddings,iroot,n_neighbors=15,pseu
 def dag_orient_edges(adjacency_matrix,pseudotime):
 
 	A = adjacency_matrix.astype(bool).astype(float)
+	print(pseudotime[:,None].shape)
+	print(pseudotime.shape)
 	D = -1*np.sign(pseudotime[:,None] - pseudotime).T
 	D = (D == 1).astype(float)
 	D = (A.toarray()*D).astype(bool).astype(float)
@@ -68,6 +73,9 @@ def dag_orient_edges(adjacency_matrix,pseudotime):
 	return D
 
 def construct_S(D):
+    
+    return D.T
+    
     S = D.clone()
     D_sum = D.sum(0)
     D_sum[D_sum == 0] = 1
