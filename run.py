@@ -26,19 +26,12 @@ config={"A": None,
         "penalty": tune.grid_search(['H']),
         "lag": 5,
         "hidden": [100],
-        "max_iter": 500,
+        "max_iter": 5000,
         "GC": None,
         "device": device,
         "lookback": 5,
         "check_every": 100,
         "verbose": 1}
-
-scheduler = ASHAScheduler(
-        metric="loss",
-        mode="min",
-        max_t=200,
-        grace_period=1,
-        reduction_factor=2)
 
 analysis = tune.run(
     train_model_ista,

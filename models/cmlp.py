@@ -676,20 +676,17 @@ def train_model_ista(config, checkpoint_dir = None):
             X_np, GC = simulate_lorenz_96(p=20, F=des, T=ln, seed=sed)
             X = torch.tensor(X_np[np.newaxis], dtype=torch.float32, device=device)
     else:
-        if 'dynamics' in trial:
-            X = pd.read_csv('/afs/csail.mit.edu/u/a/amudide/gc/data_sets/' + trial + '/simulated_noNoise_T_0.csv', index_col=0)
-        else:
-            X = pd.read_csv('/afs/csail.mit.edu/u/a/amudide/gc/data_sets/' + trial + '/simulated_noNoise_0.csv', index_col=0)
+        X = pd.read_csv('/afs/csail.mit.edu/u/a/amudide/gc/data_sets/' + trial + '/T.csv', index_col=0)
             
         X = X.to_numpy()
         X = np.transpose(X)
         adata = AnnData(X, dtype=np.float32)
         
-        Y = pd.read_csv('/afs/csail.mit.edu/u/a/amudide/gc/data_sets/' + trial + '/simulated_noNoise_U_0.csv', index_col=0)
+        Y = pd.read_csv('/afs/csail.mit.edu/u/a/amudide/gc/data_sets/' + trial + '/U.csv', index_col=0)
         Y = Y.to_numpy()
         Y = np.transpose(Y)
 
-        Z = pd.read_csv('/afs/csail.mit.edu/u/a/amudide/gc/data_sets/' + trial + '/simulated_noNoise_S_0.csv', index_col=0)
+        Z = pd.read_csv('/afs/csail.mit.edu/u/a/amudide/gc/data_sets/' + trial + '/S.csv', index_col=0)
         Z = Z.to_numpy()
         Z = np.transpose(Z)
         
