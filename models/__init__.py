@@ -1,4 +1,4 @@
 import models.cmlp
-import models.clstm
-import models.crnn
+import models.cmlp_alt
 import models.model_helper
+import models.utils

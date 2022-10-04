@@ -74,7 +74,7 @@ def dag_orient_edges(adjacency_matrix,pseudotime):
 
 def construct_S(D):
     
-    return D.T
+    #return D.T
     
     S = D.clone()
     D_sum = D.sum(0)

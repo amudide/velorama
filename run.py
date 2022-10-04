@@ -14,19 +14,19 @@ import scvelo as scv
 import cellrank as cr
 from cellrank.tl.kernels import VelocityKernel
 
-# For GPU acceleration
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-config={"A": None,
+config={"velo": False,
+        "A": None,
         "X": None,
-        "trial": tune.grid_search(['De-noised_100G_6T_300cPerT_dynamics_7_DS6']),
+        "trial": 'De-noised_100G_6T_300cPerT_dynamics_7_DS6',
         "lr": 0.0001,
         "lam": tune.grid_search(np.logspace(-3.0, 3.0, num=39).tolist()),
         "lam_ridge": 0,
-        "penalty": tune.grid_search(['H']),
+        "penalty": 'H', ## other options are 'GSGL' and 'GL'
         "lag": 5,
-        "hidden": [100],
-        "max_iter": 5000,
+        "hidden": [100], ## [100, 100] would correspond to two hidden layers, each with 100 nodes
+        "max_iter": 500,
         "GC": None,
         "device": device,
         "lookback": 5,
@@ -35,8 +35,6 @@ config={"A": None,
 
 analysis = tune.run(
     train_model_ista,
-    resources_per_trial={"cpu": 2, "gpu": 0.2},
+    resources_per_trial={"cpu": 1, "gpu": 0.1},
     config=config)
-#    scheduler=scheduler)
-
 
