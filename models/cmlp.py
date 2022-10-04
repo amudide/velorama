@@ -420,10 +420,6 @@ def train_model_ista(config, checkpoint_dir = None):
     
     GC_lag = cmlp.GC(threshold=False, ignore_lag=False).cpu()
     torch.save(GC_lag, pth + '/lag.pt')
-    
-    for i in range(len(GC)):
-        GC[i][i] = 0
-        GC_est[i][i] = 0
         
     np.savetxt(pth + '/gc.csv', GC_est, delimiter=",")
 
