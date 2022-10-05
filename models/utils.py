@@ -8,6 +8,7 @@ import scanpy.external as sce
 from anndata import AnnData
 import cellrank as cr
 from cellrank.tl.kernels import VelocityKernel
+import pandas as pd
 
 
 def construct_dag(joint_feature_embeddings,iroot,n_neighbors=15,pseudotime_algo='dpt'):
@@ -122,3 +123,63 @@ def seq2dag(N):
     for i in range(N - 1):
         A[i][i + 1] = 1
     return A
+
+
+
+def guess_iroot(m, stemcell_frac_thresh=0.05): # num of genes expressed is a proxy for stemness.
+
+        assert type(m) == np.ndarray and len(m.shape)==2
+        
+        m1 = (m>1e-8).sum(axis=1).flatten()
+        m1_topK = np.quantile(m1, 1-stemcell_frac_thresh)
+        idx_topK = (m1 >= m1_topK) #likely stem cells
+        mean_exp_topK = m[idx_topK, :].mean(axis=0).flatten()
+        
+        #print(m1.shape, m1_topK, idx_topK.shape, idx_topK.sum(), mean_exp_topK.shape)
+        m1_dist = ((m - mean_exp_topK[None, :])**2).sum(axis=1)
+        m1_dist[~idx_topK] = 1e9 # don't count non-stem cells
+
+        iroot  = np.argmin(m1_dist) # closest to center of stem cell cluster
+        return iroot
+
+
+
+def produce_beeline_inputs(transcript_counts_file, outdir):
+        X = pd.read_csv(transcript_counts_file, index_col=0, header=None, skiprows=[0])
+
+        barcodes = X.columns.tolist()
+        genes = X.index.tolist()
+        
+        X = X.to_numpy()
+        X = np.transpose(X)
+        adata = AnnData(X, dtype=np.float32)
+
+        print('Flag 592.20 ', adata.shape, len(barcodes), len(genes))
+
+        sc.pp.normalize_total(adata, target_sum=1e4)
+        sc.pp.log1p(adata)
+        sc.tl.pca(adata, svd_solver='arpack')
+
+        #typically we'd call guess_iroot(adata.X) but this is synthetic data and ok to assume first cell was near start of differentiation traj
+        iroot = 0 # 
+        
+        dpt, _  = infer_knngraph_pseudotime(adata.X, iroot)
+        adata.obs['dpt'] = dpt
+
+        print('Flag 592.30 ', iroot, adata.obs['dpt'].describe())
+              
+        df = pd.DataFrame(adata.X).T
+        print('Flag 592.32 ', df.shape)
+        df.columns = barcodes
+        print('Flag 592.34 ', df.shape)
+        df.index = genes
+        print('Flag 592.36 ', df.shape)
+
+        df.to_csv(f'{outdir}/ExpressionData.csv', index=True)
+
+        df1 = adata.obs['dpt'].to_frame()
+        df1.index.name = ''
+        df1.to_csv(f'{outdir}/PseudoTime.csv')
+
+
+        
