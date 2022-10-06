@@ -147,8 +147,8 @@ def guess_iroot(m, stemcell_frac_thresh=0.05): # num of genes expressed is a pro
 def produce_beeline_inputs(transcript_counts_file, outdir):
         X = pd.read_csv(transcript_counts_file, index_col=0, header=None, skiprows=[0])
 
-        barcodes = X.columns.tolist()
-        genes = X.index.tolist()
+        barcodes = [f'cell_{c}' for c in X.columns.tolist()]
+        genes = [f'g{gene}' for gene in X.index.tolist()]
         
         X = X.to_numpy()
         X = np.transpose(X)
@@ -164,9 +164,9 @@ def produce_beeline_inputs(transcript_counts_file, outdir):
         iroot = 0 # 
         
         dpt, _  = infer_knngraph_pseudotime(adata.X, iroot)
-        adata.obs['dpt'] = dpt
+        adata.obs['PseudoTime'] = dpt
 
-        print('Flag 592.30 ', iroot, adata.obs['dpt'].describe())
+        print('Flag 592.30 ', iroot, adata.obs['PseudoTime'].describe())
               
         df = pd.DataFrame(adata.X).T
         print('Flag 592.32 ', df.shape)
@@ -177,7 +177,8 @@ def produce_beeline_inputs(transcript_counts_file, outdir):
 
         df.to_csv(f'{outdir}/ExpressionData.csv', index=True)
 
-        df1 = adata.obs['dpt'].to_frame()
+        df1 = adata.obs['PseudoTime'].to_frame()
+        df1.index = barcodes
         df1.index.name = ''
         df1.to_csv(f'{outdir}/PseudoTime.csv')
 
