@@ -9,7 +9,7 @@ from ray.tune import CLIReporter
 from ray.tune.schedulers import ASHAScheduler
 from copy import deepcopy
 from models.model_helper import activation_helper
-from models.utils import construct_S, seq2dag, construct_dag
+from models.utils import construct_S, seq2dag, construct_dag, guess_iroot
 import matplotlib.pyplot as plt
 from sklearn import metrics
 from synthetic import simulate_var, simulate_lorenz_96
@@ -17,6 +17,7 @@ import scvelo as scv
 import cellrank as cr
 from cellrank.tl.kernels import VelocityKernel
 import pathlib
+import statistics
 
 
 class MLP(nn.Module):
@@ -252,6 +253,7 @@ def flatten(xss):
 
 def train_model_ista(config, checkpoint_dir = None):
     velo = config["velo"]
+    proba = config["proba"]
     A = config["A"]
     X = config["X"]
     trial = config["trial"]
@@ -282,18 +284,18 @@ def train_model_ista(config, checkpoint_dir = None):
             X_np, GC = simulate_lorenz_96(p=20, F=des, T=ln, seed=sed)
             X = torch.tensor(X_np[np.newaxis], dtype=torch.float32, device=device)
     else:
-        X = pd.read_csv('/afs/csail.mit.edu/u/a/amudide/gc/data_sets/' + trial + '/T.csv', index_col=0)
+        X = pd.read_csv('/afs/csail.mit.edu/u/a/amudide/gc/data_sets/' + trial + '/T.csv', index_col=0, header=None, skiprows=[0])
             
         X = X.to_numpy()
         X = np.transpose(X)
         adata = AnnData(X, dtype=np.float32)
         
         if velo:
-            Y = pd.read_csv('/afs/csail.mit.edu/u/a/amudide/gc/data_sets/' + trial + '/U.csv', index_col=0)
+            Y = pd.read_csv('/afs/csail.mit.edu/u/a/amudide/gc/data_sets/' + trial + '/U.csv', index_col=0, header=None, skiprows=[0])
             Y = Y.to_numpy()
             Y = np.transpose(Y)
 
-            Z = pd.read_csv('/afs/csail.mit.edu/u/a/amudide/gc/data_sets/' + trial + '/S.csv', index_col=0)
+            Z = pd.read_csv('/afs/csail.mit.edu/u/a/amudide/gc/data_sets/' + trial + '/S.csv', index_col=0, header=None, skiprows=[0])
             Z = Z.to_numpy()
             Z = np.transpose(Z)
 
@@ -315,15 +317,41 @@ def train_model_ista(config, checkpoint_dir = None):
             vk = VelocityKernel(adata).compute_transition_matrix()
 
             A = vk.transition_matrix
-
+            
             #A = adata.uns['velocity_graph']
             A = A.toarray()
+            
+            for i in range(len(A)):
+                for j in range(len(A)):
+                    if A[i][j] > 0 and A[j][i] > 0 and A[i][j] > A[j][i]:
+                        A[j][i] = 0
+                        
+            # the rows of A no longer sum to 0 -- check if this is okay
+            
+            if proba is False:
+                for i in range(len(A)):
+                    nzeros = []
+                    for j in range(len(A)):
+                        if A[i][j] > 0:
+                            nzeros.append(A[i][j])
+                            
+                    m = statistics.median(nzeros)
+                    
+                    for j in range(len(A)):
+                        if A[i][j] < m:
+                            A[i][j] = 0
+                        else:
+                            A[i][j] = 1
 
+
+            # should be zeros anyway, but just to make sure
             for i in range(len(A)):
                 A[i][i] = 0
         else:
             sc.tl.pca(adata, svd_solver='arpack')
-            A = construct_dag(adata.obsm['X_pca'], 0)
+            iroot = 0
+            #iroot = guess_iroot(adata.X)
+            A = construct_dag(adata.obsm['X_pca'], iroot)
             A = A.T
         
         A = torch.from_numpy(A)
@@ -411,7 +439,7 @@ def train_model_ista(config, checkpoint_dir = None):
     # Restore best model.
     restore_parameters(cmlp, best_model)
     
-    pth = '/afs/csail.mit.edu/u/a/amudide/gc/img/' + trial + '-' + str(velo) + '-' + str(max_iter) + '-' + str(hidden) + '-' + str(lag) + '-' + str(penalty) + '-' + str(lam_ridge) + '-' + str(lr) + '/' + str(lam)
+    pth = '/afs/csail.mit.edu/u/a/amudide/gc/img/' + trial + '-' + str(velo) + '-' + str(proba) + '-' + str(max_iter) + '-' + str(hidden) + '-' + str(lag) + '-' + str(penalty) + '-' + str(lam_ridge) + '-' + str(lr) + '/' + str(lam)
     
     pathlib.Path(pth).mkdir(parents=True, exist_ok=True) 
 
@@ -420,7 +448,7 @@ def train_model_ista(config, checkpoint_dir = None):
     
     GC_lag = cmlp.GC(threshold=False, ignore_lag=False).cpu()
     torch.save(GC_lag, pth + '/lag.pt')
-        
+    
     np.savetxt(pth + '/gc.csv', GC_est, delimiter=",")
 
     # Make figures
@@ -453,7 +481,7 @@ def train_model_ista(config, checkpoint_dir = None):
     axarr[0].set_xticks([])
     axarr[0].set_yticks([])
 
-    axarr[1].imshow(GC_est, cmap='Blues', extent=(0, len(GC_est), len(GC_est), 0))
+    axarr[1].imshow(GC_est, cmap='Blues')
     axarr[1].set_title('GC estimated')
     axarr[1].set_ylabel('Affected series')
     axarr[1].set_xlabel('Causal series')

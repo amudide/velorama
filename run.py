@@ -17,15 +17,16 @@ from cellrank.tl.kernels import VelocityKernel
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 config={"velo": True,
+        "proba": True, ## if velo is True and proba is False, it won't use the probabilistic transition matrix
         "A": None,
         "X": None,
         "trial": 'De-noised_100G_6T_300cPerT_dynamics_7_DS6',
         "lr": 0.0001,
         "lam": tune.grid_search(np.logspace(-3.0, 3.0, num=39).tolist()),
         "lam_ridge": 0,
-        "penalty": 'H', ## other options are 'GSGL' and 'GL'
+        "penalty": tune.grid_search(['H', 'GSGL']), ## options are 'H', 'GSGL' and 'GL'
         "lag": 5,
-        "hidden": [100], ## [100, 100] would correspond to two hidden layers, each with 100 nodes
+        "hidden": [100, 100], ## [100, 100] would correspond to two hidden layers, each with 100 nodes
         "max_iter": 10000,
         "GC": None,
         "device": device,
