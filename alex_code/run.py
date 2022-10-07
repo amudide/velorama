@@ -64,7 +64,7 @@ def main():
 			A = normalize_adjacency(torch.FloatTensor(A.toarray()))
 
 		# transpose transitions (go backward in time)
-		A = A.T.toarray()
+		A = A.T # .toarray()
 
 		# if proba is False (0), it won't use the probabilistic 
 		# transition matrix
