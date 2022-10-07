@@ -18,7 +18,7 @@ def main():
 	parser = argparse.ArgumentParser()
 	parser.add_argument('-m','--method',dest='method',type=str,default='baseline')
 	parser.add_argument('-ds','--dataset',dest='dataset',type=str)
-	# parser.add_argument('-tfp','--tf_path',dest='tf_path',type=str,default=None)
+	parser.add_argument('-tfp','--tf_path',dest='tf_path',type=str,default=None)
 	parser.add_argument('-dyn','--dyn',dest='dynamics',type=str,default='pseudotime')
 	parser.add_argument('-dev','--device',dest='device',type=str,default='cpu')
 	parser.add_argument('-tn','--trial_no',dest='trial_no',type=int,default=0)
@@ -29,8 +29,7 @@ def main():
 	parser.add_argument('-mi','--max_iter',dest='max_iter',type=int,default=500)
 	parser.add_argument('-lr','--learning_rate',dest='learning_rate',type=float,default=0.0001)
 	parser.add_argument('-pr','--proba',dest='proba',type=int,default=0)
-
-	# parser.add_argument('-tol','--tolerance',dest='tolerance',type=float,default=0.01)
+	parser.add_argument('-tol','--tolerance',dest='tolerance',type=float,default=0.01)
 
 	args = parser.parse_args()
 
@@ -52,7 +51,7 @@ def main():
 		knn_graph = adata.obsp['distances'].astype(bool).astype(float)
 		A = dag_orient_edges(knn_graph,adata.obs['dpt_pseudotime'].values)
 		A = torch.FloatTensor(A)
-		A = normalize_adjacency(A)
+		A = normalize_adjacency(A.T).T # normalize w.r.t. lookback hops
 
 	elif args.dynamics == 'rna_velocity':
 		if 'velocity_transition' not in adata.uns:
@@ -60,7 +59,9 @@ def main():
 			vk = VelocityKernel(adata).compute_transition_matrix()
 			A = vk.transition_matrix
 		else:
+			# normalize w.r.t. lookback hops
 			A = adata.uns['velocity_transition']
+			A = normalize_adjacency(torch.FloatTensor(A.toarray()))
 
 		# transpose transitions (go backward in time)
 		A = A.T.toarray()
@@ -79,6 +80,8 @@ def main():
 						A[i][j] = 0
 					else:
 						A[i][j] = 1
+			A = torch.FloatTensor(A)
+			A = normalize_adjacency(A)
 
 	# perform diffusion
 	print('Performing diffusion...')
