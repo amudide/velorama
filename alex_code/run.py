@@ -11,7 +11,7 @@ from models import *
 from train import *
 from utils import *
 
-ROOT_DIR = '/data/cb/alexwu/tf_lag'
+# ROOT_DIR = '/scratch1/alexwu/tf_lag'
 
 def main():
 
@@ -30,14 +30,16 @@ def main():
 	parser.add_argument('-lr','--learning_rate',dest='learning_rate',type=float,default=0.0001)
 	parser.add_argument('-pr','--proba',dest='proba',type=int,default=0)
 	parser.add_argument('-tol','--tolerance',dest='tolerance',type=float,default=0.01)
+	parser.add_argument('-ce','--check_every',dest='check_every',type=int,default=100)
+	parser.add_argument('-rd','--root_dir',dest='root_dir',type=str)
 
 	args = parser.parse_args()
 
-	data_dir = os.path.join(ROOT_DIR,'datasets','preprocessed')
-	gc_dir = os.path.join(ROOT_DIR,'results',args.dataset,'gc')
+	data_dir = os.path.join(args.root_dir,'datasets','preprocessed')
+	gc_dir = os.path.join(args.root_dir,'results',args.dataset,'gc')
 
-	if not os.path.exists(os.path.join(ROOT_DIR,'results',args.dataset)):
-		os.mkdir(os.path.join(ROOT_DIR,'results',args.dataset))
+	if not os.path.exists(os.path.join(args.root_dir,'results',args.dataset)):
+		os.mkdir(os.path.join(args.root_dir,'results',args.dataset))
 	if not os.path.exists(gc_dir):
 		os.mkdir(gc_dir)
 
@@ -118,7 +120,7 @@ def main():
 			  'max_iter': args.max_iter,
 			  'device': args.device,
 			  'lookback': 5,
-			  'check_every': 100,
+			  'check_every': args.check_every,
 			  'verbose': True,
 			  'tol': args.tolerance,
 			  'dynamics': args.dynamics,
@@ -127,7 +129,7 @@ def main():
 
 	resources_per_trial = {"cpu": 1, "gpu": 0.1, "memory": 2 * 1024 * 1024 * 1024}
 	analysis = tune.run(train_model,resources_per_trial=resources_per_trial,config=config,
-						local_dir=os.path.join(ROOT_DIR,'results'))
+						local_dir=os.path.join(args.root_dir,'results'))
 	
 	print('Total time:',time.time()-total_start)
 	np.savetxt(os.path.join(gc_dir,dir_name + '.time.txt'),np.array([time.time()-total_start]))
