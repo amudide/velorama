@@ -10,6 +10,26 @@ import sklearn.metrics
 
 
 def get_beeline_edge_scores(dirname, method, is_synthetic_data = True):
+    if method == 'VeloNet':
+        fname1 = f'{dirname}/velonet_results.csv'
+        fname2 = f'{dirname}' 
+
+        print('Flag 654.30 ', fname1, fname2)
+        if not (os.path.exists(fname1) or os.path.exists(fname2)):
+            return None
+        
+        if os.path.exists(fname1):
+            df1 =  pd.read_csv(fname1)
+        elif os.path.exists(fname2):
+            df1 =  pd.read_csv(fname2)
+            
+        if df1.shape[0] > 5:
+            df1.columns = ['g1', 'g2', 'score']
+            dfscores = df1
+            return dfscores
+        else:
+            return None
+    
     dfscores = None
     if os.path.exists(f'{dirname}/rankedEdges.csv'):
         df1 = pd.read_csv(f'{dirname}/rankedEdges.csv', delimiter='\t')
@@ -17,6 +37,12 @@ def get_beeline_edge_scores(dirname, method, is_synthetic_data = True):
             df1.columns = ['g1','g2','score']
             dfscores = df1
 
+    if (not is_synthetic_data) and method=='GENIE3' and os.path.exists(f'{dirname}/outFile.txt'):
+        df1 = pd.read_csv(f'{dirname}/outFile.txt', delimiter='\t')
+        if df1.shape[0] > 5:
+            df1.columns = ['g1', 'g2', 'score']
+            dfscores = df1
+        
     if not is_synthetic_data: return dfscores
             
     if dfscores is None:
@@ -113,7 +139,7 @@ def eval_synthetic_results():
 
         
 def eval_scrnaseq_results():
-    methods = ['GENIE3', 'PIDC','GRNBOOST2','SCODE','SINGE', 'SINCERITIES', 'SCRIBE'] # GENIE3 didn't run on synthetic data
+    methods = ['GENIE3', 'PIDC','GRNBOOST2','SCODE','SINGE', 'SINCERITIES', 'SCRIBE', 'VeloNet'] # GENIE3 didn't run on synthetic data
     
     DIR1 = '/afs/csail.mit.edu/u/r/rsingh/work/perrimon-sc/data/beeline-murali/code/Beeline/outputs/scRNA-Seq/'
     datasets = [  DIR1 + "s4_hESC_500-50",
@@ -141,7 +167,7 @@ def eval_scrnaseq_results():
     
     results = {}
     
-    for dset in datasets: #[:1]:
+    for dset in datasets: #[:3]: 
         basedir = dset.split('/')[-1]
         tissue = basedir.split('_')[1]
         results[tissue] = []
@@ -173,12 +199,20 @@ def eval_scrnaseq_results():
             ytrue = np.zeros((n1,n2))
             for g1,g2 in zip(df1['Gene1'], df1['Gene2']):
                 ytrue[ tf_id2idx[g1], nontf_id2idx[g2] ] = 1                    
-                print("Flag 223.25 ", ytrue.shape, n1, n2)
+
+            print("Flag 223.25 ", ytrue.shape, (ytrue > 0).sum(), (ytrue > 0).mean(), n1, n2)
         
             for method in methods:
                 print("Flag 223.30 ", dset, method)
 
-                dfscores = get_beeline_edge_scores(f'{dset}/{method}/', method, is_synthetic_data=False)
+                if method != 'VeloNet':
+                    dfscores = get_beeline_edge_scores(f'{dset}/{method}/', method, is_synthetic_data=False)
+                else:
+                    #dfscores = get_beeline_edge_scores(f'{dset}/', method, is_synthetic_data=False)
+                    #dfscores = get_beeline_edge_scores(f'/data/cb/alexwu/tf_lag/beeline_results/{basedir}.results2.csv', method, is_synthetic_data=False)
+                    #dfscores = get_beeline_edge_scores(f'/data/cb/alexwu/tf_lag/beeline_results/{basedir}.results.binarize.csv', method, is_synthetic_data=False)
+                    dfscores = get_beeline_edge_scores(f'/data/cb/alexwu/tf_lag/beeline_results/{basedir}.results.mean.0mean_1sd.h32.new.csv', method, is_synthetic_data=False)
+
                 if dfscores is None:
                     print("Flag 223.31 ", method, " had no results for ", tissue)
                     continue
