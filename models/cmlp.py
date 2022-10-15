@@ -254,6 +254,9 @@ def flatten(xss):
 def train_model_ista(config, checkpoint_dir = None):
     velo = config["velo"]
     proba = config["proba"]
+    dyna = config["dyna"]
+    log = config["log"]
+    gstd = config["gstd"]
     A = config["A"]
     X = config["X"]
     trial = config["trial"]
@@ -308,9 +311,11 @@ def train_model_ista(config, checkpoint_dir = None):
         if velo:
             scv.pp.moments(adata, n_pcs=30, n_neighbors=30)
 
-            #scv.tl.recover_dynamics(adata, n_jobs=8)
-            #scv.tl.velocity(adata, mode="dynamical")
-            scv.tl.velocity(adata)
+            if dyna:
+                scv.tl.recover_dynamics(adata)
+                scv.tl.velocity(adata, mode="dynamical")
+            else:
+                scv.tl.velocity(adata)
 
             scv.tl.velocity_graph(adata)
 
@@ -320,13 +325,6 @@ def train_model_ista(config, checkpoint_dir = None):
             
             #A = adata.uns['velocity_graph']
             A = A.toarray()
-            
-            for i in range(len(A)):
-                for j in range(len(A)):
-                    if A[i][j] > 0 and A[j][i] > 0 and A[i][j] > A[j][i]:
-                        A[j][i] = 0
-                        
-            # the rows of A no longer sum to 0 -- check if this is okay
             
             if proba is False:
                 for i in range(len(A)):
@@ -343,6 +341,13 @@ def train_model_ista(config, checkpoint_dir = None):
                         else:
                             A[i][j] = 1
 
+            for i in range(len(A)):
+                for j in range(len(A)):
+                    if A[i][j] > 0 and A[j][i] > 0 and A[i][j] > A[j][i]:
+                        A[j][i] = 0
+                        
+            # the rows of A no longer sum to 0 -- check if this is okay
+            
 
             # should be zeros anyway, but just to make sure
             for i in range(len(A)):
@@ -355,7 +360,17 @@ def train_model_ista(config, checkpoint_dir = None):
             A = A.T
         
         A = torch.from_numpy(A)
-        X = torch.from_numpy(X)
+        
+        if log:
+            X = adata.X
+        
+        if gstd:
+            std = X.std(0)
+            std[std == 0] = 1
+            X = torch.FloatTensor((X-X.mean(0))/std)
+        else:
+            X = torch.from_numpy(X)
+            
         X = torch.unsqueeze(X, 0)
 
         A = A.float()
@@ -439,7 +454,7 @@ def train_model_ista(config, checkpoint_dir = None):
     # Restore best model.
     restore_parameters(cmlp, best_model)
     
-    pth = '/afs/csail.mit.edu/u/a/amudide/gc/img/' + trial + '-' + str(velo) + '-' + str(proba) + '-' + str(max_iter) + '-' + str(hidden) + '-' + str(lag) + '-' + str(penalty) + '-' + str(lam_ridge) + '-' + str(lr) + '/' + str(lam)
+    pth = '/afs/csail.mit.edu/u/a/amudide/gc/im/' + trial + '-' + str(velo) + '-' + str(proba) + '-' + str(dyna) + '-' + str(log) + '-' + str(gstd) + '-' + str(max_iter) + '-' + str(hidden) + '-' + str(lag) + '-' + str(penalty) + '-' + str(lam_ridge) + '-' + str(lr) + '/' + str(lam)
     
     pathlib.Path(pth).mkdir(parents=True, exist_ok=True) 
 

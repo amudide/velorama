@@ -16,17 +16,20 @@ from cellrank.tl.kernels import VelocityKernel
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-config={"velo": True,
-        "proba": True, ## if velo is True and proba is False, it won't use the probabilistic transition matrix
+config={"velo": False,
+        "proba": False, ## if velo is True and proba is False, it won't use the probabilistic transition matrix
+        "dyna": False,
+        "log": False,
+        "gstd": False,
         "A": None,
         "X": None,
-        "trial": 'De-noised_100G_6T_300cPerT_dynamics_7_DS6',
-        "lr": 0.0001,
-        "lam": tune.grid_search(np.logspace(-3.0, 3.0, num=39).tolist()),
+        "trial": tune.grid_search(['De-noised_100G_3T_300cPerT_dynamics_9_DS4', 'De-noised_100G_4T_300cPerT_dynamics_10_DS5', 'De-noised_100G_6T_300cPerT_dynamics_7_DS6', 'De-noised_100G_7T_300cPerT_dynamics_11_DS7']),
+        "lr": tune.grid_search([0.0001, 0.01]),
+        "lam": tune.grid_search(np.logspace(-2.0, 1.0, num=19).tolist()),
         "lam_ridge": 0,
-        "penalty": tune.grid_search(['H', 'GSGL']), ## options are 'H', 'GSGL' and 'GL'
+        "penalty": 'H', ## options are 'H', 'GSGL' and 'GL'
         "lag": 5,
-        "hidden": [100, 100], ## [100, 100] would correspond to two hidden layers, each with 100 nodes
+        "hidden": [32],
         "max_iter": 10000,
         "GC": None,
         "device": device,
