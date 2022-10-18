@@ -12,8 +12,6 @@ from models import *
 from train import *
 from utils import *
 
-# ROOT_DIR = '/scratch1/alexwu/tf_lag'
-
 def main():
 
 	parser = argparse.ArgumentParser()
@@ -35,6 +33,8 @@ def main():
 	parser.add_argument('-rd','--root_dir',dest='root_dir',type=str)
 	parser.add_argument('-ls','--lam_start',dest='lam_start',type=float,default=-1)
 	parser.add_argument('-le','--lam_end',dest='lam_end',type=float,default=1)
+	parser.add_argument('-xn','--x_norm',dest='x_norm',type=int,default=0)
+	parser.add_argument('-nl','--num_lambdas',dest='num_lambdas',type=int,default=19)
 
 	args = parser.parse_args()
 
@@ -46,7 +46,6 @@ def main():
 	if not os.path.exists(gc_dir):
 		os.mkdir(gc_dir)
 
-	# raw_adata = sc.read(os.path.join(raw_data_dir,'{}.h5ad'.format(args.dataset)))
 	adata = sc.read(os.path.join(data_dir,'{}.h5ad'.format(args.dataset)))
 
 	if args.dynamics == 'pseudotime':
@@ -87,14 +86,58 @@ def main():
 
 		A = construct_S(torch.FloatTensor(A))
 
-	# perform diffusion
-	print('Performing diffusion...')
-	A = torch.FloatTensor(A)
-	X = torch.FloatTensor(adata[:,adata.var['is_reg']].X.toarray())
-	Y = torch.FloatTensor(adata[:,adata.var['is_target']].X.toarray())
+	if args.x_norm == 1:
+
+		print('Normalizing data by standard deviation...')
+		X_orig = adata[:,adata.var['is_reg']].X
+		X_nan = X_orig.toarray()
+		X_nan[X_nan == 0] = np.nan
+		std = np.nanstd(X_nan,0)
+		X = torch.FloatTensor(X_orig/std)
+
+		Y_orig = adata[:,adata.var['is_target']].X
+		Y_nan = Y_orig.toarray()
+		Y_nan[Y_nan == 0] = np.nan
+		std = np.nanstd(Y_nan,0)
+		Y = torch.FloatTensor(Y_orig/std)
+
+	elif args.x_norm == 2:
+
+		print('Normalizing data: 0 mean, 1 SD')
+		X_orig = adata[:,adata.var['is_reg']].X.toarray().copy()
+		std = X_orig.std(0)
+		std[std == 0] = 1
+		X = torch.FloatTensor(X_orig-X_orig.mean(0))/std
+
+		Y_orig = adata[:,adata.var['is_target']].X.toarray().copy()
+		std = Y_orig.std(0)
+		std[std == 0] = 1
+		Y = torch.FloatTensor(Y_orig-Y_orig.mean(0))/std	
+
+	elif args.x_norm == 3:
+
+		print('Use counts: 0 mean, 1 SD')
+		X_orig = adata[:,adata.var['is_reg']].X.toarray().copy()
+		X_orig = 2**X_orig-1
+		std = X_orig.std(0)
+		std[std == 0] = 1
+		X = torch.FloatTensor(X_orig-X_orig.mean(0))/std
+
+		Y_orig = adata[:,adata.var['is_target']].X.toarray().copy()
+		Y_orig = 2**Y_orig-1
+		std = Y_orig.std(0)
+		std[std == 0] = 1
+		Y = torch.FloatTensor(Y_orig-Y_orig.mean(0))/std
+
+	else:
+		X = torch.FloatTensor(adata[:,adata.var['is_reg']].X.toarray())
+		Y = torch.FloatTensor(adata[:,adata.var['is_target']].X.toarray())
+
 
 	print('# of Regs: {}, # of Targets: {}'.format(X.shape[1],Y.shape[1]))
 
+	print('Performing diffusion...')
+	A = torch.FloatTensor(A)
 	AX = calculate_AX(A,X,args.lag)
 
 	dir_name = '{}.trial{}.h{}.{}.lag{}.{}'.format(args.method,args.trial_no,args.hidden,
@@ -106,7 +149,7 @@ def main():
 	ray.init(object_store_memory=10**9)
 
 	total_start = time.time()
-	lam_list = np.round(np.logspace(args.lam_start, args.lam_end, num=19),4).tolist()
+	lam_list = np.round(np.logspace(args.lam_start, args.lam_end, num=args.num_lambdas),4).tolist()
 	# lam_list = sorted(list(set(lam_list)))
 
 	config = {'method': args.method,
@@ -129,7 +172,7 @@ def main():
 			  'gc_dir': gc_dir,
 			  'dir_name': dir_name}
 
-	resources_per_trial = {"cpu": 1, "gpu": 0.1, "memory": 2 * 1024 * 1024 * 1024}
+	resources_per_trial = {"cpu": 1, "gpu": 0.2, "memory": 2 * 1024 * 1024 * 1024}
 	analysis = tune.run(train_model,resources_per_trial=resources_per_trial,config=config,
 						local_dir=os.path.join(args.root_dir,'results'))
 	
