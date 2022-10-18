@@ -75,8 +75,6 @@ def dag_orient_edges(adjacency_matrix,pseudotime):
 
 def construct_S(D):
     
-    #return D.T
-    
     S = D.clone()
     D_sum = D.sum(0)
     D_sum[D_sum == 0] = 1
@@ -181,6 +179,3 @@ def produce_beeline_inputs(transcript_counts_file, outdir):
         df1.index = barcodes
         df1.index.name = ''
         df1.to_csv(f'{outdir}/PseudoTime.csv')
-
-
-        
